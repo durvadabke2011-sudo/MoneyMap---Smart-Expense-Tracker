@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Analysis – MoneyMap</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">💰 Money<span>Map</span></div>
+    <nav>
+      <a href="/dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="/analysis" class="active"><span class="icon">📊</span> Analysis</a>
+      <a href="/categories"><span class="icon">🗂️</span> Categories</a>
+      <a href="/budgets"><span class="icon">💰</span> Budgets</a>
+      <a href="/investments"><span class="icon">📈</span> Investments</a>
+      <a href="/trips"><span class="icon">✈️</span> Trips</a>
+      <a href="/accounts"><span class="icon">🧾</span> Accounts</a>
+      <a href="/bills"><span class="icon">🔔</span> Bills</a>
+      <a href="/subscriptions"><span class="icon">📺</span> Subscriptions</a>
+      <a href="/emi-tracker"><span class="icon">🧮</span> EMI Tracker</a>
+      <a href="/settings"><span class="icon">⚙️</span> Settings</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="user-chip">
+        <div class="user-avatar">{{ session.get('user_name','U')[0]|upper }}</div>
+        <div class="user-name">{{ session.get('user_name','User') }}</div>
+      </div>
+      <button class="logout-btn" onclick="location.href='/logout'">&#128682; Logout</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar"><h1>&#128202; Analysis</h1></div>
+
+    <div class="card mb-2">
+      <div class="card-title">Monthly Income vs Expense</div>
+      <div class="chart-container" style="position:relative;height:300px">
+        <canvas id="barChart"></canvas>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Income by Category</div>
+        <div class="chart-container" style="position:relative;height:250px">
+          <canvas id="incomeChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Expense by Category</div>
+        <div class="chart-container" style="position:relative;height:250px">
+          <canvas id="expenseChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Account Balance Distribution</div>
+        <div class="chart-container" style="position:relative;height:250px">
+          <canvas id="accountChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Investment Portfolio</div>
+        <div class="chart-container" style="position:relative;height:250px">
+          <canvas id="investmentChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Top Bills</div>
+        <div class="chart-container" style="position:relative;height:230px">
+          <canvas id="billsChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Subscriptions Cost</div>
+        <div class="chart-container" style="position:relative;height:230px">
+          <canvas id="subscriptionsChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Trip Expenses</div>
+        <div class="chart-container" style="position:relative;height:230px">
+          <canvas id="tripsChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Budget vs Plan</div>
+        <div class="chart-container" style="position:relative;height:230px">
+          <canvas id="budgetChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Loan Breakdown (Principal + Interest)</div>
+      <div class="chart-container" style="position:relative;height:200px">
+        <canvas id="loanChart"></canvas>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Monthly Savings</div>
+        <div class="chart-container" style="position:relative;height:220px">
+          <canvas id="savingsChart"></canvas>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-title">Summary Table</div>
+        <table>
+          <thead><tr><th>Month</th><th>Income</th><th>Expense</th><th>Savings</th></tr></thead>
+          <tbody id="summaryTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="/static/js/main.js"></script>
+<script>
+// 20 fully distinct colors — every slice will look different
+const PALETTE = [
+  '#4f46e5','#10b981','#f59e0b','#ef4444','#3b82f6',
+  '#8b5cf6','#06b6d4','#f43f5e','#84cc16','#fb923c',
+  '#a78bfa','#34d399','#60a5fa','#fbbf24','#f472b6',
+  '#2dd4bf','#c084fc','#4ade80','#38bdf8','#facc15'
+];
+function clr(n, offset) {
+  offset = offset || 0;
+  return Array.from({length: n}, (_, i) => PALETTE[(i + offset) % PALETTE.length]);
+}
+
+function initCharts() {
+  const d = window.analysisData;
+  if (!d || !d.months || !d.months.length) {
+    document.getElementById('summaryTable').innerHTML = '<tr><td colspan="4" class="empty">No data yet.</td></tr>';
+    return;
+  }
+
+  // Income vs Expense bar
+  new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: {
+      labels: d.months,
+      datasets: [
+        { label: 'Income',  data: d.income,  backgroundColor: '#10b981' },
+        { label: 'Expense', data: d.expense, backgroundColor: '#ef4444' }
+      ]
+    },
+    options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'top' } } }
+  });
+
+  // Income by category — distinct colors starting at offset 0
+  if (d.income_categories.length) {
+    new Chart(document.getElementById('incomeChart'), {
+      type: 'doughnut',
+      data: { labels: d.income_categories, datasets: [{ data: d.income_values, backgroundColor: clr(d.income_categories.length, 0) }] },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } } }
+    });
+  }
+
+  // Expense by category — distinct colors starting at offset 5 so different from income
+  if (d.expense_categories.length) {
+    new Chart(document.getElementById('expenseChart'), {
+      type: 'doughnut',
+      data: { labels: d.expense_categories, datasets: [{ data: d.expense_values, backgroundColor: clr(d.expense_categories.length, 5) }] },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } } }
+    });
+  }
+
+  // Accounts
+  if (d.account_types.length) {
+    new Chart(document.getElementById('accountChart'), {
+      type: 'doughnut',
+      data: { labels: d.account_types, datasets: [{ data: d.account_values, backgroundColor: clr(d.account_types.length, 2) }] },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } } }
+    });
+  }
+
+  // Investments
+  if (d.inv_types.length) {
+    new Chart(document.getElementById('investmentChart'), {
+      type: 'doughnut',
+      data: {
+        labels: d.inv_types.map((t,i) => t + ' (' + d.inv_counts[i] + ')'),
+        datasets: [{ data: d.inv_values, backgroundColor: clr(d.inv_types.length, 7) }]
+      },
+      options: { responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'bottom' } } }
+    });
+  }
+
+  // Bills
+  if (d.bill_categories.length) {
+    new Chart(document.getElementById('billsChart'), {
+      type: 'bar',
+      data: { labels: d.bill_categories, datasets: [{ label:'Amount', data: d.bill_values, backgroundColor: clr(d.bill_categories.length, 1) }] },
+      options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } } }
+    });
+  }
+
+  // Subscriptions
+  if (d.subscription_names.length) {
+    new Chart(document.getElementById('subscriptionsChart'), {
+      type: 'bar',
+      data: { labels: d.subscription_names, datasets: [{ label:'Cost', data: d.subscription_values, backgroundColor: clr(d.subscription_names.length, 4) }] },
+      options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } } }
+    });
+  }
+
+  // Trips
+  if (d.trip_names.length) {
+    new Chart(document.getElementById('tripsChart'), {
+      type: 'bar',
+      data: { labels: d.trip_names, datasets: [{ label:'Spent', data: d.trip_values, backgroundColor: clr(d.trip_names.length, 9) }] },
+      options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } } }
+    });
+  }
+
+  // Budget
+  if (d.budget_categories.length) {
+    new Chart(document.getElementById('budgetChart'), {
+      type: 'bar',
+      data: { labels: d.budget_categories, datasets: [{ label:'Budget', data: d.budget_values, backgroundColor: clr(d.budget_categories.length, 6) }] },
+      options: { indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:false } } }
+    });
+  }
+
+  // Loans stacked
+  if (d.loan_names.length) {
+    new Chart(document.getElementById('loanChart'), {
+      type: 'bar',
+      data: {
+        labels: d.loan_names,
+        datasets: [
+          { label:'Principal', data: d.loan_principals, backgroundColor: '#3b82f6' },
+          { label:'Interest',  data: d.loan_interests,  backgroundColor: '#ef4444' }
+        ]
+      },
+      options: { indexAxis:'y', stacked:true, responsive:true, maintainAspectRatio:false, plugins:{ legend:{ position:'top' } } }
+    });
+  }
+
+  // Savings line
+  new Chart(document.getElementById('savingsChart'), {
+    type: 'line',
+    data: {
+      labels: d.months,
+      datasets: [{ label:'Savings', data: d.savings, borderColor:'#4f46e5', backgroundColor:'rgba(79,70,229,.1)', fill:true, tension:0.4 }]
+    },
+    options: { responsive:true, maintainAspectRatio:false }
+  });
+
+  // Summary table
+  document.getElementById('summaryTable').innerHTML = d.months.map((m, i) =>
+    '<tr><td>'+m+'</td>' +
+    '<td class="text-success">'+MM.fmt(d.income[i])+'</td>' +
+    '<td class="text-danger">'+MM.fmt(d.expense[i])+'</td>' +
+    '<td class="'+(d.savings[i]>=0?'text-success':'text-danger')+'">'+MM.fmt(d.savings[i])+'</td></tr>'
+  ).join('');
+}
+
+async function loadAnalysis() {
+  try {
+    const data = await MM.get('/api/analysis');
+    window.analysisData = {
+      months:[], income:[], expense:[], savings:[],
+      income_categories:[], income_values:[],
+      expense_categories:[], expense_values:[],
+      account_types:[], account_values:[],
+      inv_types:[], inv_counts:[], inv_values:[],
+      bill_categories:[], bill_values:[],
+      subscription_names:[], subscription_values:[],
+      trip_names:[], trip_values:[],
+      loan_names:[], loan_principals:[], loan_interests:[],
+      budget_categories:[], budget_values:[],
+      ...data
+    };
+    setTimeout(initCharts, 100);
+  } catch(e) {
+    console.error('Analysis load error:', e);
+    document.getElementById('summaryTable').innerHTML = '<tr><td colspan="4" class="empty">Failed to load.</td></tr>';
+  }
+}
+
+document.readyState === 'loading'
+  ? document.addEventListener('DOMContentLoaded', loadAnalysis)
+  : loadAnalysis();
+</script>
+</body>
+</html>

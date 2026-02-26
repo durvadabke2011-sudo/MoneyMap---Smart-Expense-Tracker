@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Investments – MoneyMap</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+
+<div class="layout">
+  <!-- ═══════════ SIDEBAR ═══════════ -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">💰 Money<span>Map</span></div>
+
+    <nav>
+        <a href="/dashboard"><span class="icon">🏠</span> Dashboard</a>
+        <a href="/analysis"><span class="icon">📊</span> Analysis</a>
+        <a href="/categories"><span class="icon">🗂️</span> Categories</a>
+        <a href="/budgets"><span class="icon">💰</span> Budgets</a>
+        <a href="/investments" class="active"><span class="icon">📈</span> Investments</a>
+        <a href="/trips"><span class="icon">✈️</span> Trips</a>
+        <a href="/accounts"><span class="icon">🧾</span> Accounts</a>
+        <a href="/bills"><span class="icon">🔔</span> Bills</a>
+        <a href="/subscriptions"><span class="icon">📺</span> Subscriptions</a>
+        <a href="/emi-tracker"><span class="icon">🧮</span> EMI Tracker</a>
+        <a href="/settings"><span class="icon">⚙️</span> Settings</a>
+    </nav>
+
+    <div class="sidebar-bottom">
+      <div class="user-chip">
+        <div class="user-avatar">{{ session.get('user_name','U')[0]|upper }}</div>
+        <div class="user-name">{{ session.get('user_name','User') }}</div>
+      </div>
+      <button class="logout-btn" onclick="location.href='/logout'">🚪 Logout</button>
+    </div>
+  </aside>
+
+  <!-- ═══════════ MAIN CONTENT ═══════════ -->
+  <main class="main">
+    <div class="topbar">
+      <h1>📈 Investments</h1>
+      <button class="btn btn-primary btn-sm" onclick="MM.openModal('invModal')">
+        ➕ Add Investment
+      </button>
+    </div>
+
+    <!-- SUMMARY -->
+    <div class="inv-summary">
+      <div class="inv-sum-item">
+        <div class="inv-sum-label">Total Invested</div>
+        <div class="inv-sum-val" id="inv-total-invested">₹0</div>
+      </div>
+      <div class="inv-sum-item">
+        <div class="inv-sum-label">Current Value</div>
+        <div class="inv-sum-val" id="inv-total-value">₹0</div>
+      </div>
+      <div class="inv-sum-item">
+        <div class="inv-sum-label">Total Gain / Loss</div>
+        <div class="inv-sum-val" id="inv-total-gain">₹0</div>
+      </div>
+    </div>
+
+    <!-- LIST -->
+    <div class="card">
+      <div id="inv-list">
+        <div class="empty">No investments added yet.</div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ═══════════ ADD INVESTMENT MODAL ═══════════ -->
+<div class="modal-overlay" id="invModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add Investment</h3>
+      <button class="modal-close" onclick="MM.closeModal('invModal')">✕</button>
+    </div>
+
+    <div class="form-group">
+      <label>Investment Name</label>
+      <input type="text" id="invName" placeholder="Mutual Fund / Stock">
+    </div>
+
+    <div class="form-group">
+      <label>Investment Type</label>
+      <select id="invType">
+        <option>Stocks</option>
+        <option>Mutual Funds</option>
+        <option>Bonds</option>
+        <option>Crypto</option>
+        <option>PPF (Public Provident Fund)</option>
+        <option>FD (Fixed Deposit)</option>
+        <option>Gold</option>
+        <option>Real Estate</option>
+        <option>Other</option>
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label>Amount Invested (₹)</label>
+      <input type="number" id="invAmount" min="1">
+    </div>
+
+    <div class="form-group">
+      <label>Current Value (₹)</label>
+      <input type="number" id="invValue" min="0">
+    </div>
+
+    <div class="form-group">
+      <label>Date Invested</label>
+      <input type="date" id="invDate">
+    </div>
+
+    <div class="form-group">
+      <label>Notes (Optional)</label>
+      <textarea id="invNote" placeholder="Add notes..." rows="2"></textarea>
+    </div>
+
+    <button class="btn btn-primary" onclick="saveInvestment()">Save</button>
+  </div>
+</div>
+
+<script src="/static/js/main.js"></script>
+
+<script>
+async function loadInvestments() {
+  try {
+    const res = await fetch('/api/investments');
+    if (!res.ok) throw new Error('Failed to load investments');
+    const investments = await res.json();
+    
+    const list = document.getElementById('inv-list');
+    
+    if (investments.length === 0) {
+      list.innerHTML = '<div class="empty">No investments added yet.</div>';
+      document.getElementById('inv-total-invested').innerText = '₹0';
+      document.getElementById('inv-total-value').innerText = '₹0';
+      document.getElementById('inv-total-gain').innerText = '₹0';
+      return;
+    }
+
+    let totalInvested = 0;
+    let totalValue = 0;
+
+    list.innerHTML = investments.map(inv => {
+      totalInvested += inv.amount;
+      totalValue += inv.current_val;
+      const gain = inv.current_val - inv.amount;
+      const gainPercent = ((gain / inv.amount) * 100).toFixed(2);
+      const gainClass = gain >= 0 ? 'positive' : 'negative';
+      
+      return `
+        <div class="card-item">
+          <div class="item-header">
+            <div>
+              <div class="item-title">${inv.name}</div>
+              <div class="item-subtitle">${inv.type} • ${inv.invest_date}</div>
+            </div>
+            <button class="btn-delete" onclick="deleteInvestment(${inv.id})">🗑️</button>
+          </div>
+          <div class="item-details">
+            <div>
+              <span class="label">Invested:</span>
+              <span class="value">₹${inv.amount.toFixed(2)}</span>
+            </div>
+            <div>
+              <span class="label">Current:</span>
+              <span class="value">₹${inv.current_val.toFixed(2)}</span>
+            </div>
+            <div>
+              <span class="label">Gain/Loss:</span>
+              <span class="value ${gainClass}">₹${gain.toFixed(2)} (${gainPercent}%)</span>
+            </div>
+          </div>
+          ${inv.note ? `<div class="item-note">${inv.note}</div>` : ''}
+        </div>
+      `;
+    }).join('');
+
+    document.getElementById('inv-total-invested').innerText = '₹' + totalInvested.toFixed(2);
+    document.getElementById('inv-total-value').innerText = '₹' + totalValue.toFixed(2);
+    document.getElementById('inv-total-gain').innerText = '₹' + (totalValue - totalInvested).toFixed(2);
+
+  } catch (err) {
+    console.error(err);
+    document.getElementById('inv-list').innerHTML = `<div class="empty">Error loading investments: ${err.message}</div>`;
+  }
+}
+
+async function saveInvestment() {
+  const name = document.getElementById('invName').value.trim();
+  const type = document.getElementById('invType').value;
+  const amount = parseFloat(document.getElementById('invAmount').value);
+  const currentVal = parseFloat(document.getElementById('invValue').value);
+  const invDate = document.getElementById('invDate').value;
+  const note = document.getElementById('invNote').value.trim();
+
+  if (!name || !amount || !currentVal || !invDate) {
+    MM.toast('Please fill all required fields');
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/investments', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, type, amount, current_val: currentVal, invest_date: invDate, note })
+    });
+
+    if (!res.ok) throw new Error('Failed to save investment');
+    
+    MM.toast('Investment added successfully!');
+    MM.closeModal('invModal');
+    
+    // Reset form
+    document.getElementById('invName').value = '';
+    document.getElementById('invType').value = 'Mutual Fund';
+    document.getElementById('invAmount').value = '';
+    document.getElementById('invValue').value = '';
+    document.getElementById('invDate').value = '';
+    document.getElementById('invNote').value = '';
+
+    loadInvestments();
+  } catch (err) {
+    MM.toast('Error: ' + err.message);
+  }
+}
+
+async function deleteInvestment(invId) {
+  if (!confirm('Delete this investment?')) return;
+
+  try {
+    const res = await fetch(`/api/investments/${invId}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to delete');
+    
+    MM.toast('Investment deleted');
+    loadInvestments();
+  } catch (err) {
+    MM.toast('Error: ' + err.message);
+  }
+}
+
+// Set today's date as default
+document.getElementById('invDate').valueAsDate = new Date();
+
+loadInvestments();
+</script>
+
+</body>
+</html>

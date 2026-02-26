@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dashboard – MoneyMap</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">💰 Money<span>Map</span></div>
+    <nav>
+      <a href="/dashboard" class="active"><span class="icon">🏠</span> Dashboard</a>
+      <a href="/analysis"><span class="icon">📊</span> Analysis</a>
+      <a href="/categories"><span class="icon">🗂️</span> Categories</a>
+      <a href="/budgets"><span class="icon">💰</span> Budgets</a>
+      <a href="/investments"><span class="icon">📈</span> Investments</a>
+      <a href="/trips"><span class="icon">✈️</span> Trips</a>
+      <a href="/accounts"><span class="icon">🧾</span> Accounts</a>
+      <a href="/bills"><span class="icon">🔔</span> Bills</a>
+      <a href="/subscriptions"><span class="icon">📺</span> Subscriptions</a>
+      <a href="/emi-tracker"><span class="icon">🧮</span> EMI Tracker</a>
+      <a href="/settings"><span class="icon">⚙️</span> Settings</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="user-chip">
+        <div class="user-avatar" id="avatarLetter">U</div>
+        <div class="user-name" id="userName">{{ session.get('user_name','User') }}</div>
+      </div>
+      <button class="logout-btn" onclick="location.href='/logout'">🚪 Logout</button>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <h1>Dashboard</h1>
+        <small id="greeting">Welcome back!</small>
+      </div>
+      <div style="display:flex;gap:.7rem;">
+        <button class="btn btn-primary btn-sm" onclick="MM.openModal('txnModal')">+ Add Transaction</button>
+        <button class="btn btn-outline btn-sm" onclick="MM.openModal('goalModal')">+ Savings Goal</button>
+      </div>
+    </div>
+
+    <!-- STATS -->
+    <div class="stats-grid">
+      <div class="stat-card income">
+        <div class="stat-label">Total Income</div>
+        <div class="stat-value" id="statIncome">₹0</div>
+        <div class="stat-icon">💚</div>
+      </div>
+      <div class="stat-card expense">
+        <div class="stat-label">Total Expense</div>
+        <div class="stat-value" id="statExpense">₹0</div>
+        <div class="stat-icon">🔴</div>
+      </div>
+      <div class="stat-card balance">
+        <div class="stat-label">Balance</div>
+        <div class="stat-value" id="statBalance">₹0</div>
+        <div class="stat-icon">💎</div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <!-- TRANSACTIONS -->
+      <div class="card" style="grid-column:1/-1;">
+        <div class="flex-between mb-2">
+          <div class="card-title" style="margin-bottom:0">Recent Transactions</div>
+        </div>
+        <table>
+          <thead><tr><th>Date</th><th>Note</th><th>Category</th><th>Type</th><th>Amount</th><th></th></tr></thead>
+          <tbody id="txnTable"><tr><td colspan="6" class="empty">No transactions yet.</td></tr></tbody>
+        </table>
+      </div>
+
+      <!-- SAVINGS GOALS -->
+      <div class="card">
+        <div class="card-title">🎯 Savings Goals</div>
+        <div id="goalsList"><div class="empty">No goals set.</div></div>
+      </div>
+
+      <!-- HEALTH SCORE -->
+      <div class="card text-center">
+        <div class="card-title">Financial Health</div>
+        <div class="score-circle">
+          <div class="score-num" id="healthNum">–</div>
+          <div class="score-label">/ 100</div>
+        </div>
+        <div id="healthGrade" style="font-weight:600;margin-bottom:.5rem;"></div>
+        <div id="healthMsg" class="text-muted"></div>
+        <div id="suggList" style="margin-top:1rem;text-align:left;"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ADD TRANSACTION MODAL -->
+<div class="modal-overlay" id="txnModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add Transaction</h3>
+      <button class="modal-close" onclick="MM.closeModal('txnModal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Type</label>
+      <select id="txnType" onchange="loadCats()">
+        <option value="income">Income</option>
+        <option value="expense">Expense</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Category</label>
+      <select id="txnCat"><option value="">-- Select --</option></select>
+    </div>
+    <div class="form-group">
+      <label>Amount (₹)</label>
+      <input type="number" id="txnAmt" placeholder="0.00" min="0" step="0.01">
+    </div>
+    <div class="form-group">
+      <label>Note</label>
+      <input type="text" id="txnNote" placeholder="Optional note">
+    </div>
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" id="txnDate">
+    </div>
+    <button class="btn btn-primary" onclick="saveTxn()">Save Transaction</button>
+  </div>
+</div>
+
+<!-- ADD GOAL MODAL -->
+<div class="modal-overlay" id="goalModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>New Savings Goal</h3>
+      <button class="modal-close" onclick="MM.closeModal('goalModal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Goal Name</label>
+      <input type="text" id="goalName" placeholder="e.g. Emergency Fund">
+    </div>
+    <div class="form-group">
+      <label>Target Amount (₹)</label>
+      <input type="number" id="goalTarget" placeholder="50000" min="1">
+    </div>
+    <button class="btn btn-primary" onclick="saveGoal()">Add Goal</button>
+  </div>
+</div>
+
+<!-- ADD MORE SAVINGS MODAL -->
+<div class="modal-overlay" id="addSavingsModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>➕ Add Savings</h3>
+      <button class="modal-close" onclick="MM.closeModal('addSavingsModal')">✕</button>
+    </div>
+    <p style="color:var(--muted);margin-bottom:1rem;">
+      Adding to: <strong id="addSavingsGoalName"></strong><br>
+      Current: <strong id="addSavingsCurrent"></strong> / <strong id="addSavingsTarget"></strong>
+    </p>
+    <div class="form-group">
+      <label>Amount to Add (₹)</label>
+      <input type="number" id="addSavingsAmt" placeholder="500" min="1" step="0.01">
+    </div>
+    <button class="btn btn-primary" onclick="confirmAddSavings()">Add Savings</button>
+  </div>
+</div>
+
+<script src="/static/js/main.js"></script>
+<script>
+  document.getElementById('txnDate').valueAsDate = new Date();
+
+  const name = '{{ session.get("user_name","User") }}';
+  document.getElementById('avatarLetter').textContent = name[0].toUpperCase();
+  const hr = new Date().getHours();
+  const greet = hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening';
+  document.getElementById('greeting').textContent = `${greet}, ${name}!`;
+
+  let addSavingsGoalId = null;
+
+  async function load() {
+    const d = await MM.get('/api/dashboard');
+    document.getElementById('statIncome').textContent  = MM.fmt(d.income);
+    document.getElementById('statExpense').textContent = MM.fmt(d.expense);
+    document.getElementById('statBalance').textContent = MM.fmt(d.balance);
+
+    // Transactions
+    const tb = document.getElementById('txnTable');
+    if (!d.transactions || d.transactions.length === 0) {
+      tb.innerHTML = '<tr><td colspan="6" class="empty">No transactions yet.</td></tr>';
+    } else {
+      tb.innerHTML = d.transactions.map(t => `
+        <tr>
+          <td>${t.date}</td>
+          <td>${t.note || '–'}</td>
+          <td>${t.category || '–'}</td>
+          <td><span class="badge badge-${t.type}">${t.type}</span></td>
+          <td class="${t.type === 'income' ? 'text-success' : 'text-danger'}">${MM.fmt(t.amount)}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="delTxn(${t.id})">✕</button></td>
+        </tr>
+      `).join('');
+    }
+
+    // Savings Goals
+    const gl = document.getElementById('goalsList');
+    if (!d.goals || d.goals.length === 0) {
+      gl.innerHTML = '<div class="empty">No goals set. Click "+ Savings Goal" to add one.</div>';
+    } else {
+      gl.innerHTML = d.goals.map(g => {
+        const pct = Math.min(100, Math.round(g.saved / g.target * 100));
+        const isComplete = pct >= 100;
+        return `
+          <div style="margin-bottom:1.2rem;padding-bottom:1rem;border-bottom:1px solid var(--border);">
+            <div class="flex-between mb-1">
+              <span style="font-weight:600;">${g.name}</span>
+              <span class="text-muted" style="font-size:.85rem;">${MM.fmt(g.saved)} / ${MM.fmt(g.target)}</span>
+            </div>
+            <div class="progress-bar" style="margin-bottom:.4rem;">
+              <div class="progress-fill" style="width:${pct}%;background:${isComplete ? '#10b981' : '#4f46e5'};transition:width .4s;"></div>
+            </div>
+            <div class="flex-between" style="font-size:.75rem;color:var(--muted);">
+              <span>${pct}% complete</span>
+              <span>${isComplete ? '🎉 Goal Reached!' : MM.fmt(g.target - g.saved) + ' remaining'}</span>
+            </div>
+            <div style="margin-top:.6rem;display:flex;gap:.5rem;">
+              ${!isComplete ? `<button class="btn btn-primary btn-sm" onclick="openAddSavings(${g.id},'${g.name.replace(/'/g,"\\'")}',${g.saved},${g.target})">➕ Add Savings</button>` : ''}
+              <button class="btn btn-danger btn-sm" onclick="delGoal(${g.id})">🗑 Delete</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Health Score
+    const h = await MM.get('/api/health-score');
+    document.getElementById('healthNum').textContent   = h.score;
+    document.getElementById('healthGrade').textContent = h.grade;
+    document.getElementById('healthMsg').textContent   = h.message;
+    document.getElementById('suggList').innerHTML = h.suggestions.map(s =>
+      `<div class="suggestion-item ${s.startsWith('⚠️') ? 'warn' : ''}">${s}</div>`
+    ).join('');
+  }
+
+  async function loadCats() {
+    const type = document.getElementById('txnType').value;
+    const cats = await MM.get('/api/categories');
+    const sel = document.getElementById('txnCat');
+    sel.innerHTML = '<option value="">-- Select --</option>' +
+      cats.filter(c => c.type === type).map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  }
+
+  async function saveTxn() {
+    const amt  = parseFloat(document.getElementById('txnAmt').value);
+    const date = document.getElementById('txnDate').value;
+    if (!amt || !date) return MM.toast('Amount and date required.', 'error');
+    await MM.post('/api/transactions', {
+      type: document.getElementById('txnType').value,
+      category_id: document.getElementById('txnCat').value || null,
+      amount: amt,
+      note: document.getElementById('txnNote').value,
+      date
+    });
+    MM.closeModal('txnModal');
+    MM.toast('Transaction added!');
+    load();
+  }
+
+  async function delTxn(id) {
+    if (!confirm('Delete this transaction?')) return;
+    await MM.del('/api/transactions/' + id);
+    MM.toast('Deleted.');
+    load();
+  }
+
+  async function saveGoal() {
+    const name   = document.getElementById('goalName').value.trim();
+    const target = parseFloat(document.getElementById('goalTarget').value);
+    if (!name || !target) return MM.toast('Name and target required.', 'error');
+    await MM.post('/api/savings-goals', { name, target, saved: 0 });
+    MM.closeModal('goalModal');
+    document.getElementById('goalName').value   = '';
+    document.getElementById('goalTarget').value = '';
+    MM.toast('Savings goal added!');
+    load();
+  }
+
+  function openAddSavings(id, name, saved, target) {
+    addSavingsGoalId = id;
+    document.getElementById('addSavingsGoalName').textContent = name;
+    document.getElementById('addSavingsCurrent').textContent  = MM.fmt(saved);
+    document.getElementById('addSavingsTarget').textContent   = MM.fmt(target);
+    document.getElementById('addSavingsAmt').value = '';
+    MM.openModal('addSavingsModal');
+  }
+
+  async function confirmAddSavings() {
+    const amt = parseFloat(document.getElementById('addSavingsAmt').value);
+    if (!amt || amt <= 0) return MM.toast('Enter a valid amount.', 'error');
+    await MM.post('/api/savings-goals/' + addSavingsGoalId + '/add', { amount: amt });
+    MM.closeModal('addSavingsModal');
+    MM.toast('Savings updated! 🎯');
+    load();
+  }
+
+  async function delGoal(id) {
+    if (!confirm('Delete this savings goal?')) return;
+    await MM.del('/api/savings-goals/' + id);
+    MM.toast('Goal deleted.');
+    load();
+  }
+
+  load();
+  loadCats();
+</script>
+</body>
+</html>

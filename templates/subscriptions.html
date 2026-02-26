@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Subscriptions – MoneyMap</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">💰 Money<span>Map</span></div>
+    <nav>
+      <a href="/dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="/analysis"><span class="icon">📊</span> Analysis</a>
+      <a href="/categories"><span class="icon">🗂️</span> Categories</a>
+      <a href="/budgets"><span class="icon">💰</span> Budgets</a>
+      <a href="/investments"><span class="icon">📈</span> Investments</a>
+      <a href="/trips"><span class="icon">✈️</span> Trips</a>
+      <a href="/accounts"><span class="icon">🧾</span> Accounts</a>
+      <a href="/bills"><span class="icon">🔔</span> Bills</a>
+      <a href="/subscriptions" class="active"><span class="icon">📺</span> Subscriptions</a>
+      <a href="/emi-tracker"><span class="icon">🧮</span> EMI Tracker</a>
+      <a href="/settings"><span class="icon">⚙️</span> Settings</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="user-chip">
+        <div class="user-avatar">{{ session.get('user_name','U')[0]|upper }}</div>
+        <div class="user-name">{{ session.get('user_name','User') }}</div>
+      </div>
+      <button class="logout-btn" onclick="location.href='/logout'">🚪 Logout</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <h1>📺 Subscriptions</h1>
+      <button class="btn btn-primary btn-sm" onclick="MM.openModal('subModal')">+ Add Subscription</button>
+    </div>
+
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:1.5rem;">
+      <div class="stat-card expense">
+        <div class="stat-label">Monthly Cost</div>
+        <div class="stat-value" id="totalMonthly">₹0</div>
+        <div class="stat-icon">📅</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Annual Cost</div>
+        <div class="stat-value" id="totalAnnual">₹0</div>
+        <div class="stat-icon">📆</div>
+      </div>
+      <div class="stat-card income">
+        <div class="stat-label">Paid This Session</div>
+        <div class="stat-value" id="paidCount">0</div>
+        <div class="stat-icon">✅</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Service</th>
+            <th>Monthly</th>
+            <th>Renewal Day</th>
+            <th>Next Renewal</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="subTable">
+          <tr><td colspan="6" class="empty">No subscriptions yet.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<!-- ADD SUBSCRIPTION MODAL -->
+<div class="modal-overlay" id="subModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add Subscription</h3>
+      <button class="modal-close" onclick="MM.closeModal('subModal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Service Name</label>
+      <input type="text" id="subName" placeholder="e.g. Netflix">
+    </div>
+    <div class="form-group">
+      <label>Monthly Amount (₹)</label>
+      <input type="number" id="subAmt" placeholder="649">
+    </div>
+    <div class="form-group">
+      <label>Renewal Day (1-28)</label>
+      <input type="number" id="subDay" placeholder="15" min="1" max="28">
+    </div>
+    <button class="btn btn-primary" onclick="saveSub()">Save</button>
+  </div>
+</div>
+
+<!-- PAY SUBSCRIPTION MODAL -->
+<div class="modal-overlay" id="paySubModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>✅ Mark Subscription as Paid</h3>
+      <button class="modal-close" onclick="MM.closeModal('paySubModal')">✕</button>
+    </div>
+    <p style="color:var(--muted);margin-bottom:1rem;">
+      Paying: <strong id="paySubName"></strong><br>
+      Amount: <strong id="paySubAmt"></strong><br>
+      <span style="font-size:.82rem;">This will be added as an expense transaction automatically.</span>
+    </p>
+    <div class="form-group">
+      <label>Payment Date</label>
+      <input type="date" id="paySubDate">
+    </div>
+    <button class="btn btn-primary" onclick="confirmPaySub()">Confirm Payment</button>
+  </div>
+</div>
+
+<script src="/static/js/main.js"></script>
+<script>
+let payingSubId = null;
+const paidSubs = new Set();
+
+async function load() {
+  const subs = await MM.get('/api/subscriptions');
+  const tb = document.getElementById('subTable');
+
+  const total = subs.reduce((s, x) => s + x.amount, 0);
+  document.getElementById('totalMonthly').textContent = MM.fmt(total);
+  document.getElementById('totalAnnual').textContent  = MM.fmt(total * 12);
+  document.getElementById('paidCount').textContent    = paidSubs.size;
+
+  if (!subs.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="empty">No subscriptions yet.</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = subs.map(s => {
+    const isPaid = paidSubs.has(s.id);
+    const days = s.days_left;
+
+    let statusBadge;
+    if (isPaid) {
+      statusBadge = '<span class="badge" style="background:#10b981;color:#fff;">✅ Paid</span>';
+    } else if (days <= 0) {
+      statusBadge = '<span class="badge" style="background:#ef4444;color:#fff;">⚠️ Overdue</span>';
+    } else if (days <= 3) {
+      statusBadge = `<span class="badge" style="background:#f59e0b;color:#fff;">Due in ${days}d</span>`;
+    } else {
+      statusBadge = `<span class="badge">Renews in ${days}d</span>`;
+    }
+
+    const payBtn = isPaid
+      ? '<button class="btn btn-sm" disabled style="opacity:.4;">Paid</button>'
+      : `<button class="btn btn-primary btn-sm" onclick="openPaySub(${s.id},'${s.name.replace(/'/g,"\\'")}',${s.amount})">💳 Pay</button>`;
+
+    return `
+      <tr>
+        <td><strong>${s.name}</strong></td>
+        <td class="text-danger"><strong>${MM.fmt(s.amount)}</strong></td>
+        <td>Day ${s.renewal_day}</td>
+        <td>${s.next_renewal}</td>
+        <td>${statusBadge}</td>
+        <td style="display:flex;gap:.4rem;">
+          ${payBtn}
+          <button class="btn btn-danger btn-sm" onclick="delSub(${s.id})">✕</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openPaySub(id, name, amount) {
+  payingSubId = id;
+  document.getElementById('paySubName').textContent = name;
+  document.getElementById('paySubAmt').textContent  = MM.fmt(amount);
+  document.getElementById('paySubDate').valueAsDate = new Date();
+  MM.openModal('paySubModal');
+}
+
+async function confirmPaySub() {
+  if (!payingSubId) return;
+  const date = document.getElementById('paySubDate').value;
+  await MM.post('/api/subscriptions/' + payingSubId + '/pay', { date });
+  paidSubs.add(payingSubId);
+  MM.closeModal('paySubModal');
+  MM.toast('Subscription paid! Expense added ✅');
+  payingSubId = null;
+  load();
+}
+
+async function saveSub() {
+  const name = document.getElementById('subName').value.trim();
+  const amt  = parseFloat(document.getElementById('subAmt').value);
+  const day  = parseInt(document.getElementById('subDay').value);
+  if (!name || !amt || !day) return MM.toast('All fields required.', 'error');
+  await MM.post('/api/subscriptions', { name, amount: amt, renewal_day: day });
+  MM.closeModal('subModal');
+  MM.toast('Subscription added!');
+  document.getElementById('subName').value = '';
+  document.getElementById('subAmt').value  = '';
+  document.getElementById('subDay').value  = '';
+  load();
+}
+
+async function delSub(id) {
+  if (!confirm('Delete subscription?')) return;
+  await MM.del('/api/subscriptions/' + id);
+  paidSubs.delete(id);
+  MM.toast('Deleted.');
+  load();
+}
+
+load();
+</script>
+</body>
+</html>

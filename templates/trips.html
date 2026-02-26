@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Trips – MoneyMap</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">💰 Money<span>Map</span></div>
+    <nav>
+      <a href="/dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="/analysis"><span class="icon">📊</span> Analysis</a>
+      <a href="/categories"><span class="icon">🗂️</span> Categories</a>
+      <a href="/budgets"><span class="icon">💰</span> Budgets</a>
+      <a href="/investments"><span class="icon">📈</span> Investments</a>
+      <a href="/trips" class="active"><span class="icon">✈️</span> Trips</a>
+      <a href="/accounts"><span class="icon">🧾</span> Accounts</a>
+      <a href="/bills"><span class="icon">🔔</span> Bills</a>
+      <a href="/subscriptions"><span class="icon">📺</span> Subscriptions</a>
+      <a href="/emi-tracker"><span class="icon">🧮</span> EMI Tracker</a>
+      <a href="/settings"><span class="icon">⚙️</span> Settings</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="user-chip">
+        <div class="user-avatar">{{ session.get('user_name','U')[0]|upper }}</div>
+        <div class="user-name">{{ session.get('user_name','User') }}</div>
+      </div>
+      <button class="logout-btn" onclick="location.href='/logout'">🚪 Logout</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <h1>✈️ Trips</h1>
+      <button class="btn btn-primary btn-sm" onclick="MM.openModal('tripModal')">+ Add Trip</button>
+    </div>
+    <div id="tripCards"><div class="empty">No trips yet.</div></div>
+  </main>
+</div>
+
+<!-- Add Trip Modal -->
+<div class="modal-overlay" id="tripModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>New Trip</h3>
+      <button class="modal-close" onclick="MM.closeModal('tripModal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Destination</label>
+      <input type="text" id="tripDest" placeholder="e.g. Goa">
+    </div>
+    <div class="form-group">
+      <label>Start Date</label>
+      <input type="date" id="tripStart">
+    </div>
+    <div class="form-group">
+      <label>End Date</label>
+      <input type="date" id="tripEnd">
+    </div>
+    <div class="form-group">
+      <label>Budget (₹)</label>
+      <input type="number" id="tripBudget" placeholder="15000">
+    </div>
+    <button class="btn btn-primary" onclick="saveTrip()">Add Trip</button>
+  </div>
+</div>
+
+<!-- Add Expense Modal -->
+<div class="modal-overlay" id="expModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add Trip Expense</h3>
+      <button class="modal-close" onclick="MM.closeModal('expModal')">✕</button>
+    </div>
+    <input type="hidden" id="expTripId">
+    <div class="form-group">
+      <label>Note</label>
+      <input type="text" id="expNote" placeholder="e.g. Hotel">
+    </div>
+    <div class="form-group">
+      <label>Amount (₹)</label>
+      <input type="number" id="expAmt" placeholder="2000">
+    </div>
+    <div class="form-group">
+      <label>Date</label>
+      <input type="date" id="expDate">
+    </div>
+    <button class="btn btn-primary" onclick="saveExp()">Add</button>
+  </div>
+</div>
+
+<script src="/static/js/main.js"></script>
+<script>
+document.getElementById('expDate').valueAsDate = new Date();
+
+async function load() {
+  const trips = await MM.get('/api/trips');
+  const el = document.getElementById('tripCards');
+  if (!trips.length) { el.innerHTML = '<div class="empty">No trips yet.</div>'; return; }
+
+  el.innerHTML = trips.map(t => {
+    const over = t.spent > t.budget && t.budget > 0;
+    const pct  = t.budget > 0 ? Math.min(100, Math.round(t.spent / t.budget * 100)) : 0;
+    return `
+      <div class="card mb-2">
+        <div class="flex-between mb-1">
+          <div>
+            <strong style="font-size:1.1rem">✈️ ${t.destination}</strong>
+            <div class="text-muted">${t.start_date} → ${t.end_date}</div>
+          </div>
+          <div style="display:flex;gap:.5rem">
+            <button class="btn btn-success btn-sm" onclick="openExpModal(${t.id})">+ Expense</button>
+            <button class="btn btn-danger btn-sm" onclick="delTrip(${t.id})">✕</button>
+          </div>
+        </div>
+        <div class="flex-between text-muted" style="font-size:.85rem;margin-bottom:.5rem">
+          <span>Budget: ${MM.fmt(t.budget)}</span>
+          <span class="${over?'text-danger':'text-success'}">Spent: ${MM.fmt(t.spent)}</span>
+        </div>
+        ${t.budget > 0 ? `
+        <div class="progress-bar">
+          <div class="progress-fill" style="width:${pct}%;background:${over?'#ef4444':'#4f46e5'}"></div>
+        </div>
+        <div style="font-size:.75rem;color:var(--muted);margin-top:.2rem">${pct}% of budget used ${over?'⚠️ Over budget!':''}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function openExpModal(id) {
+  document.getElementById('expTripId').value = id;
+  MM.openModal('expModal');
+}
+
+async function saveTrip() {
+  const dest = document.getElementById('tripDest').value.trim();
+  const s = document.getElementById('tripStart').value;
+  const e = document.getElementById('tripEnd').value;
+  if (!dest || !s || !e) return MM.toast('All fields required.', 'error');
+  await MM.post('/api/trips', { destination: dest, start_date: s, end_date: e, budget: parseFloat(document.getElementById('tripBudget').value)||0 });
+  MM.closeModal('tripModal');
+  MM.toast('Trip added!');
+  load();
+}
+
+async function saveExp() {
+  const tid = document.getElementById('expTripId').value;
+  const amt = parseFloat(document.getElementById('expAmt').value);
+  const date = document.getElementById('expDate').value;
+  if (!amt || !date) return MM.toast('Amount and date required.', 'error');
+  await MM.post('/api/trips/' + tid + '/expenses', { note: document.getElementById('expNote').value, amount: amt, date });
+  MM.closeModal('expModal');
+  MM.toast('Expense added!');
+  load();
+}
+
+async function delTrip(id) {
+  if (!confirm('Delete trip?')) return;
+  await MM.del('/api/trips/' + id);
+  MM.toast('Deleted.');
+  load();
+}
+
+load();
+</script>
+</body>
+</html>

@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Bills – MoneyMap</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">💰 Money<span>Map</span></div>
+    <nav>
+      <a href="/dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="/analysis"><span class="icon">📊</span> Analysis</a>
+      <a href="/categories"><span class="icon">🗂️</span> Categories</a>
+      <a href="/budgets"><span class="icon">💰</span> Budgets</a>
+      <a href="/investments"><span class="icon">📈</span> Investments</a>
+      <a href="/trips"><span class="icon">✈️</span> Trips</a>
+      <a href="/accounts"><span class="icon">🧾</span> Accounts</a>
+      <a href="/bills" class="active"><span class="icon">🔔</span> Bills</a>
+      <a href="/subscriptions"><span class="icon">📺</span> Subscriptions</a>
+      <a href="/emi-tracker"><span class="icon">🧮</span> EMI Tracker</a>
+      <a href="/settings"><span class="icon">⚙️</span> Settings</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="user-chip">
+        <div class="user-avatar">{{ session.get('user_name','U')[0]|upper }}</div>
+        <div class="user-name">{{ session.get('user_name','User') }}</div>
+      </div>
+      <button class="logout-btn" onclick="location.href='/logout'">🚪 Logout</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <h1>🔔 Bill Reminders</h1>
+      <button class="btn btn-primary btn-sm" onclick="MM.openModal('billModal')">+ Add Bill</button>
+    </div>
+
+    <!-- Summary stats -->
+    <div class="stats-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:1.5rem;">
+      <div class="stat-card expense">
+        <div class="stat-label">Total Bills / Month</div>
+        <div class="stat-value" id="totalBillAmt">₹0</div>
+        <div class="stat-icon">🔔</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Bills Count</div>
+        <div class="stat-value" id="totalBillCount">0</div>
+        <div class="stat-icon">📋</div>
+      </div>
+      <div class="stat-card income">
+        <div class="stat-label">Paid This Month</div>
+        <div class="stat-value" id="paidCount">0</div>
+        <div class="stat-icon">✅</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Bill</th>
+            <th>Category</th>
+            <th>Amount</th>
+            <th>Due Day</th>
+            <th>Next Due</th>
+            <th>Status</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="billTable">
+          <tr><td colspan="7" class="empty">No bills added.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+
+<!-- ADD BILL MODAL -->
+<div class="modal-overlay" id="billModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add Bill Reminder</h3>
+      <button class="modal-close" onclick="MM.closeModal('billModal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Bill Name</label>
+      <input type="text" id="billName" placeholder="e.g. Electricity">
+    </div>
+    <div class="form-group">
+      <label>Category</label>
+      <select id="billCat">
+        <option value="">-- Select Category --</option>
+        <option value="Electricity">Electricity</option>
+        <option value="Water">Water</option>
+        <option value="Internet">Internet</option>
+        <option value="Mobile Bill">Mobile Bill</option>
+        <option value="Gas">Gas</option>
+        <option value="Insurance (Health)">Insurance (Health)</option>
+        <option value="Insurance (Vehicle)">Insurance (Vehicle)</option>
+        <option value="Insurance (Home)">Insurance (Home)</option>
+        <option value="House Rent">House Rent</option>
+        <option value="Property Tax">Property Tax</option>
+        <option value="EMI (Loan)">EMI (Loan)</option>
+        <option value="Credit Card">Credit Card</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Amount (₹)</label>
+      <input type="number" id="billAmt" placeholder="1200">
+    </div>
+    <div class="form-group">
+      <label>Due Day of Month (1-28)</label>
+      <input type="number" id="billDay" placeholder="5" min="1" max="28">
+    </div>
+    <button class="btn btn-primary" onclick="saveBill()">Save Bill</button>
+  </div>
+</div>
+
+<!-- PAY BILL MODAL -->
+<div class="modal-overlay" id="payBillModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>✅ Mark Bill as Paid</h3>
+      <button class="modal-close" onclick="MM.closeModal('payBillModal')">✕</button>
+    </div>
+    <p style="color:var(--muted);margin-bottom:1rem;">
+      This will mark <strong id="payBillName"></strong> as paid and automatically add
+      <strong id="payBillAmt"></strong> as an expense transaction.
+    </p>
+    <div class="form-group">
+      <label>Payment Date</label>
+      <input type="date" id="payBillDate">
+    </div>
+    <button class="btn btn-primary" onclick="confirmPay()">Confirm Payment</button>
+  </div>
+</div>
+
+<script src="/static/js/main.js"></script>
+<script>
+let payingBillId = null;
+// Track which bills paid this session (in-memory)
+const paidBills = new Set();
+
+function nextDueDate(dueDay) {
+  const today = new Date();
+  const d = new Date(today.getFullYear(), today.getMonth(), dueDay);
+  if (d < today) d.setMonth(d.getMonth() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+function daysUntil(dateStr) {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const due = new Date(dateStr);
+  return Math.ceil((due - today) / 86400000);
+}
+
+async function load() {
+  const bills = await MM.get('/api/bills');
+  const tb = document.getElementById('billTable');
+
+  // Update stats
+  const total = bills.reduce((s, b) => s + b.amount, 0);
+  document.getElementById('totalBillAmt').textContent = MM.fmt(total);
+  document.getElementById('totalBillCount').textContent = bills.length;
+  document.getElementById('paidCount').textContent = paidBills.size;
+
+  if (!bills.length) {
+    tb.innerHTML = '<tr><td colspan="7" class="empty">No bills added.</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = bills.map(b => {
+    const nextDue = nextDueDate(b.due_day);
+    const days = daysUntil(nextDue);
+    const isPaid = paidBills.has(b.id);
+
+    let statusBadge;
+    if (isPaid) {
+      statusBadge = '<span class="badge" style="background:#10b981;color:#fff;">✅ Paid</span>';
+    } else if (days <= 0) {
+      statusBadge = '<span class="badge" style="background:#ef4444;color:#fff;">⚠️ Overdue</span>';
+    } else if (days <= 5) {
+      statusBadge = `<span class="badge" style="background:#f59e0b;color:#fff;">Due in ${days}d</span>`;
+    } else {
+      statusBadge = `<span class="badge">Upcoming (${days}d)</span>`;
+    }
+
+    const payBtn = isPaid
+      ? '<button class="btn btn-sm" disabled style="opacity:.4;">Paid</button>'
+      : `<button class="btn btn-primary btn-sm" onclick="openPayModal(${b.id},'${b.name}',${b.amount})">💳 Pay</button>`;
+
+    return `
+      <tr>
+        <td><strong>${b.name}</strong></td>
+        <td><span class="badge" style="background:#f0f4ff;color:#4f46e5;">${b.category || 'General'}</span></td>
+        <td class="text-danger"><strong>${MM.fmt(b.amount)}</strong></td>
+        <td>Day ${b.due_day}</td>
+        <td>${nextDue}</td>
+        <td>${statusBadge}</td>
+        <td style="display:flex;gap:.4rem;">
+          ${payBtn}
+          <button class="btn btn-danger btn-sm" onclick="delBill(${b.id})">✕</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function openPayModal(id, name, amount) {
+  payingBillId = id;
+  document.getElementById('payBillName').textContent = name;
+  document.getElementById('payBillAmt').textContent = MM.fmt(amount);
+  document.getElementById('payBillDate').valueAsDate = new Date();
+  MM.openModal('payBillModal');
+}
+
+async function confirmPay() {
+  if (!payingBillId) return;
+  const date = document.getElementById('payBillDate').value;
+  await MM.post('/api/bills/' + payingBillId + '/pay', { date });
+  paidBills.add(payingBillId);
+  MM.closeModal('payBillModal');
+  MM.toast('Bill paid! Expense added to transactions ✅');
+  payingBillId = null;
+  load();
+}
+
+async function saveBill() {
+  const name = document.getElementById('billName').value.trim();
+  const amt  = parseFloat(document.getElementById('billAmt').value);
+  const day  = parseInt(document.getElementById('billDay').value);
+  const cat  = document.getElementById('billCat').value;
+  if (!name || !amt || !day) return MM.toast('All fields required.', 'error');
+  await MM.post('/api/bills', { name, amount: amt, due_day: day, category: cat });
+  MM.closeModal('billModal');
+  MM.toast('Bill added!');
+  // Clear form
+  document.getElementById('billName').value = '';
+  document.getElementById('billAmt').value = '';
+  document.getElementById('billDay').value = '';
+  document.getElementById('billCat').value = '';
+  load();
+}
+
+async function delBill(id) {
+  if (!confirm('Delete this bill?')) return;
+  await MM.del('/api/bills/' + id);
+  paidBills.delete(id);
+  MM.toast('Deleted.');
+  load();
+}
+
+load();
+</script>
+</body>
+</html>

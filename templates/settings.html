@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Settings – MoneyMap</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">💰 Money<span>Map</span></div>
+    <nav>
+      <a href="/dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="/analysis"><span class="icon">📊</span> Analysis</a>
+      <a href="/categories"><span class="icon">🗂️</span> Categories</a>
+      <a href="/budgets"><span class="icon">💰</span> Budgets</a>
+      <a href="/investments"><span class="icon">📈</span> Investments</a>
+      <a href="/trips"><span class="icon">✈️</span> Trips</a>
+      <a href="/accounts"><span class="icon">🧾</span> Accounts</a>
+      <a href="/bills"><span class="icon">🔔</span> Bills</a>
+      <a href="/subscriptions"><span class="icon">📺</span> Subscriptions</a>
+      <a href="/emi-tracker"><span class="icon">🧮</span> EMI Tracker</a>
+      <a href="/settings" class="active"><span class="icon">⚙️</span> Settings</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="user-chip">
+        <div class="user-avatar">{{ session.get('user_name','U')[0]|upper }}</div>
+        <div class="user-name">{{ session.get('user_name','User') }}</div>
+      </div>
+      <button class="logout-btn" onclick="location.href='/logout'">🚪 Logout</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar"><h1>⚙️ Settings</h1></div>
+    <div class="grid-2">
+
+      <!-- PROFILE -->
+      <div class="card">
+        <div class="card-title">👤 Profile</div>
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="profName" placeholder="Your Name">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="profEmail" disabled style="background:#f8fafc;color:var(--muted)">
+        </div>
+        <div class="form-group">
+          <label>Member Since</label>
+          <input type="text" id="profSince" disabled style="background:#f8fafc;color:var(--muted)">
+        </div>
+        <button class="btn btn-primary" onclick="saveProfile()">Update Profile</button>
+      </div>
+
+      <!-- PREFERENCES -->
+      <div class="card">
+        <div class="card-title">🎨 Preferences</div>
+        <div class="form-group">
+          <label>Currency</label>
+          <select id="prefCurrency">
+            <option value="INR">₹ INR</option>
+            <option value="USD">$ USD</option>
+            <option value="EUR">€ EUR</option>
+            <option value="GBP">£ GBP</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Theme</label>
+          <select id="prefTheme">
+            <option value="light">Light</option>
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="savePrefs()">Save Preferences</button>
+      </div>
+
+      <!-- SECURITY -->
+      <div class="card">
+        <div class="card-title">🔒 Security – Change Password</div>
+        <div class="form-group">
+          <label>Current Password</label>
+          <input type="password" id="oldPwd" placeholder="Current password">
+        </div>
+        <div class="form-group">
+          <label>New Password</label>
+          <input type="password" id="newPwd" placeholder="New password (min 6)">
+        </div>
+        <div class="form-group">
+          <label>Confirm New Password</label>
+          <input type="password" id="confirmPwd" placeholder="Repeat new password">
+        </div>
+        <button class="btn btn-warning" onclick="changePwd()">Change Password</button>
+      </div>
+
+      <!-- NOTIFICATIONS -->
+      <div class="card">
+        <div class="card-title">🔔 Notifications & Info</div>
+        <div class="suggestion-item">📌 Bill & subscription reminders are shown on their respective pages.</div>
+        <div class="suggestion-item">📌 Budget overspend alerts appear on the Budgets page.</div>
+        <div class="suggestion-item">📌 Financial health tips are shown on the Dashboard.</div>
+        <div class="suggestion-item">📌 Trip budget alerts are shown on the Trips page.</div>
+        <div style="margin-top:1.2rem">
+          <button class="btn btn-danger btn-sm" onclick="if(confirm('Logout?')) location.href='/logout'">🚪 Logout Account</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+<script src="/static/js/main.js"></script>
+<script>
+async function load() {
+  const d = await MM.get('/api/profile');
+  document.getElementById('profName').value   = d.user.name;
+  document.getElementById('profEmail').value  = d.user.email;
+  document.getElementById('profSince').value  = d.user.created_at.slice(0,10);
+  document.getElementById('prefCurrency').value = d.preferences.currency || 'INR';
+  document.getElementById('prefTheme').value    = d.preferences.theme    || 'light';
+}
+
+async function saveProfile() {
+  const name = document.getElementById('profName').value.trim();
+  if (!name) return MM.toast('Name required.', 'error');
+  await MM.put('/api/profile', { name });
+  MM.toast('Profile updated!');
+}
+
+async function savePrefs() {
+  const currency = document.getElementById('prefCurrency').value;
+  const theme    = document.getElementById('prefTheme').value;
+  await MM.put('/api/profile', { currency, theme });
+  MM.toast('Preferences saved!');
+}
+
+async function changePwd() {
+  const old = document.getElementById('oldPwd').value;
+  const np  = document.getElementById('newPwd').value;
+  const cp  = document.getElementById('confirmPwd').value;
+  if (!old || !np || !cp) return MM.toast('All fields required.', 'error');
+  if (np !== cp) return MM.toast('New passwords do not match.', 'error');
+  if (np.length < 6) return MM.toast('Password must be at least 6 chars.', 'error');
+
+  const res = await fetch('/api/change-password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ old_password: old, new_password: np })
+  });
+  const d = await res.json();
+  if (res.ok) {
+    MM.toast('Password changed!');
+    document.getElementById('oldPwd').value = '';
+    document.getElementById('newPwd').value = '';
+    document.getElementById('confirmPwd').value = '';
+  } else {
+    MM.toast(d.message || 'Error.', 'error');
+  }
+}
+
+load();
+</script>
+</body>
+</html>

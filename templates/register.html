@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Register – MoneyMap</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+
+  <style>
+    .field-error  { color:#ef4444; font-size:.78rem; margin-top:.3rem; display:none; }
+    .field-ok     { color:#10b981; font-size:.78rem; margin-top:.3rem; display:none; }
+    input.invalid { border-color:#ef4444 !important; }
+    input.valid   { border-color:#10b981 !important; }
+    .strength-bar { height:5px; border-radius:3px; margin-top:.5rem; background:#e2e8f0; overflow:hidden; }
+    .strength-fill{ height:100%; border-radius:3px; transition:width .3s,background .3s; width:0; }
+    .strength-lbl { font-size:.72rem; margin-top:.25rem; font-weight:600; }
+    .match-msg    { font-size:.78rem; margin-top:.3rem; display:none; }
+  </style>
+</head>
+
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <h1>💰 MoneyMap</h1>
+    <p>Create your free account</p>
+
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, msg in msgs %}
+        <div class="flash {{ cat }}">{{ msg }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <form method="POST" action="/register" onsubmit="return validateAll()">
+
+      <!-- Full Name -->
+      <div class="form-group">
+        <label>Full Name</label>
+        <input type="text" id="name" name="name" placeholder="e.g. Rahul Sharma"
+               oninput="chkName()" autocomplete="name">
+        <div class="field-error" id="nameErr">
+          ❌ Name must contain only letters and be at least 2 characters.
+        </div>
+      </div>
+
+      <!-- Email -->
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="email" name="email" placeholder="e.g. rahul123"
+               oninput="chkEmail()" autocomplete="email">
+        <div class="field-error" id="emailErr">❌ Invalid email. Use a real email like user@gmail.com</div>
+        <div class="field-ok"    id="emailOk">✅ Looks good!</div>
+      </div>
+
+      <!-- Password -->
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="password" name="password"
+               placeholder="Min 6 characters, no spaces"
+               oninput="chkPass()" autocomplete="new-password">
+        <div class="strength-bar">
+          <div class="strength-fill" id="strFill"></div>
+        </div>
+        <div class="strength-lbl" id="strLbl"></div>
+        <div class="field-error" id="passErr">
+          ❌ Min 6 characters, no spaces allowed.
+        </div>
+      </div>
+
+      <!-- Repeat Password -->
+      <div class="form-group">
+        <label>Repeat Password</label>
+        <input type="password" id="repeat_password" name="repeat_password"
+               placeholder="Re-enter your password"
+               oninput="chkRepeat()" autocomplete="new-password">
+        <div class="match-msg" id="matchOk"  style="color:#10b981;">✅ Passwords match!</div>
+        <div class="match-msg" id="matchErr" style="color:#ef4444;">❌ Passwords do not match.</div>
+      </div>
+
+      <button class="btn btn-primary" type="submit">Create Account</button>
+    </form>
+
+    <p class="auth-link">Already have an account? <a href="/login">Login</a></p>
+  </div>
+</div>
+
+<script>
+  const EMAIL_RE = /^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/;
+  const NAME_RE  = /^[A-Za-z ]+$/;
+
+  function mark(id, valid) {
+    const el = document.getElementById(id);
+    el.classList.toggle('valid', valid);
+    el.classList.toggle('invalid', !valid);
+  }
+
+  function show(id, visible) {
+    document.getElementById(id).style.display = visible ? 'block' : 'none';
+  }
+
+  // ── NAME VALIDATION ───────────────────────────────
+  function chkName() {
+    const el = document.getElementById('name');
+    const v  = el.value.trim();
+
+    const ok = v.length >= 2 && NAME_RE.test(v);
+
+    if (v.length > 0) mark('name', ok);
+    show('nameErr', v.length > 0 && !ok);
+
+    return ok;
+  }
+
+  // ── EMAIL ─────────────────────────────────────────
+  function chkEmail() {
+    const v = email.value.trim();
+    const ok = EMAIL_RE.test(v);
+    if (v.length > 0) mark('email', ok);
+    show('emailErr', !ok && v.length > 0);
+    show('emailOk', ok);
+    return ok;
+  }
+
+  // ── PASSWORD ──────────────────────────────────────
+  function chkPass() {
+    const v = password.value;
+    const ok = v.length >= 6 && !v.includes(' ');
+    if (v.length > 0) mark('password', ok);
+    show('passErr', !ok && v.length > 0);
+
+    let s = 0;
+    if (v.length >= 6) s++;
+    if (v.length >= 10) s++;
+    if (/[A-Z]/.test(v)) s++;
+    if (/[0-9]/.test(v)) s++;
+    if (/[^a-zA-Z0-9]/.test(v)) s++;
+
+    const colors = ['','#ef4444','#f59e0b','#f59e0b','#10b981','#10b981'];
+    const labels = ['','Weak','Fair','Good','Strong','Very Strong'];
+
+    strFill.style.width = (s * 20) + '%';
+    strFill.style.background = colors[s] || '';
+    strLbl.textContent = v.length ? labels[s] : '';
+    strLbl.style.color = colors[s] || '';
+
+    if (repeat_password.value.length > 0) chkRepeat();
+    return ok;
+  }
+
+  // ── REPEAT PASSWORD ───────────────────────────────
+  function chkRepeat() {
+    const ok = repeat_password.value.length > 0 &&
+               repeat_password.value === password.value;
+    if (repeat_password.value.length > 0) mark('repeat_password', ok);
+    show('matchOk', ok);
+    show('matchErr', !ok && repeat_password.value.length > 0);
+    return ok;
+  }
+
+  // ── SUBMIT ────────────────────────────────────────
+  function validateAll() {
+    return chkName() && chkEmail() && chkPass() && chkRepeat();
+  }
+</script>
+
+</body>
+</html>

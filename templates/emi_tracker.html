@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>EMI Tracker – MoneyMap</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .loan-card { background:#fff; border-radius:.9rem; box-shadow:0 1px 4px rgba(0,0,0,.08); padding:1.4rem; margin-bottom:1.2rem; border-left:5px solid var(--primary); }
+    .loan-card.overdue { border-left-color: var(--danger); }
+    .loan-card.paid-off { border-left-color: var(--success); }
+    .loan-meta { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:.8rem; margin:1rem 0; }
+    .loan-meta-item { background:#f8fafc; border-radius:.5rem; padding:.6rem .9rem; }
+    .loan-meta-item .label { font-size:.7rem; color:var(--muted); text-transform:uppercase; letter-spacing:.4px; font-weight:600; }
+    .loan-meta-item .value { font-size:1rem; font-weight:700; margin-top:.15rem; }
+    .payment-history { max-height:220px; overflow-y:auto; }
+    .payment-row { display:flex; justify-content:space-between; align-items:center; padding:.5rem 0; border-bottom:1px solid var(--border); font-size:.85rem; }
+    .tab-bar { display:flex; gap:.5rem; margin-bottom:1.5rem; }
+    .tab-btn { padding:.55rem 1.2rem; border:2px solid var(--border); border-radius:.5rem; background:#fff; cursor:pointer; font-size:.88rem; font-weight:600; color:var(--muted); transition:.2s; }
+    .tab-btn.active { border-color:var(--primary); background:var(--primary); color:#fff; }
+    .tab-content { display:none; }
+    .tab-content.active { display:block; }
+  </style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">💰 Money<span>Map</span></div>
+    <nav>
+      <a href="/dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="/analysis"><span class="icon">📊</span> Analysis</a>
+      <a href="/categories"><span class="icon">🗂️</span> Categories</a>
+      <a href="/budgets"><span class="icon">💰</span> Budgets</a>
+      <a href="/investments"><span class="icon">📈</span> Investments</a>
+      <a href="/trips"><span class="icon">✈️</span> Trips</a>
+      <a href="/accounts"><span class="icon">🧾</span> Accounts</a>
+      <a href="/bills"><span class="icon">🔔</span> Bills</a>
+      <a href="/subscriptions"><span class="icon">📺</span> Subscriptions</a>
+      <a href="/emi-tracker" class="active"><span class="icon">🧮</span> EMI Tracker</a>
+      <a href="/settings"><span class="icon">⚙️</span> Settings</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="user-chip">
+        <div class="user-avatar">{{ session.get('user_name','U')[0]|upper }}</div>
+        <div class="user-name">{{ session.get('user_name','User') }}</div>
+      </div>
+      <button class="logout-btn" onclick="location.href='/logout'">🚪 Logout</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar">
+      <h1>🧮 EMI Tracker</h1>
+      <button class="btn btn-primary btn-sm" onclick="MM.openModal('calcModal')">+ Add Loan / Calculate EMI</button>
+    </div>
+
+    <!-- SUMMARY STATS -->
+    <div class="stats-grid" id="summaryStats">
+      <div class="stat-card"><div class="stat-label">Active Loans</div><div class="stat-value" id="statLoans" style="color:var(--primary)">0</div></div>
+      <div class="stat-card"><div class="stat-label">Total Monthly EMI</div><div class="stat-value" id="statEmi" style="color:var(--danger)">₹0</div></div>
+      <div class="stat-card"><div class="stat-label">Total Outstanding</div><div class="stat-value" id="statOutstanding" style="color:var(--warning)">₹0</div></div>
+      <div class="stat-card"><div class="stat-label">Total Paid</div><div class="stat-value" id="statPaid" style="color:var(--success)">₹0</div></div>
+    </div>
+
+    <!-- TAB BAR -->
+    <div class="tab-bar">
+      <button class="tab-btn active" onclick="switchTab('loans')">📋 My Loans</button>
+      <button class="tab-btn" onclick="switchTab('calc')">🧮 Calculator</button>
+    </div>
+
+    <!-- LOANS TAB -->
+    <div class="tab-content active" id="tab-loans">
+      <div id="loanCards"><div class="empty">No loans added yet. Click "+ Add Loan" to get started.</div></div>
+    </div>
+
+    <!-- CALCULATOR TAB -->
+    <div class="tab-content" id="tab-calc">
+      <div class="card">
+        <div class="card-title">🧮 EMI Calculator</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+          <div class="form-group">
+            <label>Loan Name</label>
+            <input type="text" id="calcName2" placeholder="e.g. Home Loan">
+          </div>
+          <div class="form-group">
+            <label>Loan Amount (₹)</label>
+            <input type="number" id="calcP2" placeholder="500000" oninput="calcLive()">
+          </div>
+          <div class="form-group">
+            <label>Interest Rate (% per annum)</label>
+            <input type="number" id="calcR2" placeholder="8.5" step="0.1" oninput="calcLive()">
+          </div>
+          <div class="form-group">
+            <label>Tenure (months)</label>
+            <input type="number" id="calcN2" placeholder="60" oninput="calcLive()">
+          </div>
+        </div>
+        <div id="liveResult" style="display:none;margin-top:1rem;">
+          <div class="stats-grid">
+            <div class="stat-card"><div class="stat-label">Monthly EMI</div><div class="stat-value" id="liveEmi" style="color:var(--primary)"></div></div>
+            <div class="stat-card"><div class="stat-label">Total Interest</div><div class="stat-value" id="liveInt" style="color:var(--warning)"></div></div>
+            <div class="stat-card"><div class="stat-label">Total Payment</div><div class="stat-value" id="liveTotal" style="color:var(--text)"></div></div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-top:1rem;">
+            <div>
+              <div class="card-title">📊 Principal vs Interest Breakup</div>
+              <canvas id="pieChart" height="200"></canvas>
+            </div>
+            <div>
+              <div class="card-title">📅 Repayment Schedule (first 12 months)</div>
+              <div style="max-height:260px;overflow-y:auto;">
+                <table>
+                  <thead><tr><th>Month</th><th>EMI</th><th>Principal</th><th>Interest</th><th>Balance</th></tr></thead>
+                  <tbody id="scheduleTable"></tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-primary" style="margin-top:1rem;" onclick="saveFromCalc()">💾 Save this Loan</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ADD LOAN MODAL -->
+<div class="modal-overlay" id="calcModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Add New Loan</h3>
+      <button class="modal-close" onclick="MM.closeModal('calcModal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Loan Name</label>
+      <input type="text" id="mLoanName" placeholder="e.g. Home Loan, Car Loan, Personal Loan">
+    </div>
+    <div class="form-group">
+      <label>Principal Amount (₹)</label>
+      <input type="number" id="mP" placeholder="500000" min="1">
+    </div>
+    <div class="form-group">
+      <label>Annual Interest Rate (%)</label>
+      <input type="number" id="mR" placeholder="8.5" step="0.1" min="0">
+    </div>
+    <div class="form-group">
+      <label>Tenure (months)</label>
+      <input type="number" id="mN" placeholder="60" min="1">
+    </div>
+    <button class="btn btn-primary" onclick="addLoan()">Calculate & Save</button>
+  </div>
+</div>
+
+<!-- PAY EMI MODAL -->
+<div class="modal-overlay" id="payModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Mark EMI Paid</h3>
+      <button class="modal-close" onclick="MM.closeModal('payModal')">✕</button>
+    </div>
+    <input type="hidden" id="payLoanId">
+    <div class="form-group">
+      <label>Amount (₹)</label>
+      <input type="number" id="payAmt" placeholder="Auto-filled from EMI">
+    </div>
+    <div class="form-group">
+      <label>Payment Date</label>
+      <input type="date" id="payDate">
+    </div>
+    <div class="form-group">
+      <label>Note (optional)</label>
+      <input type="text" id="payNote" placeholder="e.g. Paid via UPI">
+    </div>
+    <button class="btn btn-success" onclick="submitPayment()">✅ Mark as Paid</button>
+  </div>
+</div>
+
+<!-- HISTORY MODAL -->
+<div class="modal-overlay" id="histModal">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <h3 id="histTitle">Payment History</h3>
+      <button class="modal-close" onclick="MM.closeModal('histModal')">✕</button>
+    </div>
+    <div class="payment-history" id="histList"><div class="empty">No payments yet.</div></div>
+  </div>
+</div>
+
+<script src="/static/js/main.js"></script>
+<script>
+document.getElementById('payDate').valueAsDate = new Date();
+let pieChartInstance = null;
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('tab-' + tab).classList.add('active');
+}
+
+// ── LOAD LOANS ──────────────────────────────────
+async function load() {
+  const loans = await MM.get('/api/loans');
+  const el    = document.getElementById('loanCards');
+
+  // Summary stats
+  const active = loans.filter(l => l.months_left > 0);
+  document.getElementById('statLoans').textContent       = active.length;
+  document.getElementById('statEmi').textContent         = MM.fmt(active.reduce((s,l) => s+l.emi, 0));
+  document.getElementById('statOutstanding').textContent = MM.fmt(loans.reduce((s,l) => s+l.amount_left, 0));
+  document.getElementById('statPaid').textContent        = MM.fmt(loans.reduce((s,l) => s+l.amount_paid, 0));
+
+  if (!loans.length) {
+    el.innerHTML = '<div class="empty">No loans added yet. Click "+ Add Loan" to get started.</div>';
+    return;
+  }
+
+  el.innerHTML = loans.map(l => {
+    const paidOff = l.months_left === 0;
+    const overdue = !paidOff && l.days_to_due < 0;
+    const dueSoon = !paidOff && l.days_to_due <= 5 && l.days_to_due >= 0;
+    const dueClass = overdue ? 'days-over' : dueSoon ? 'days-warn' : 'days-ok';
+    const cardClass = paidOff ? 'paid-off' : overdue ? 'overdue' : '';
+    const dueText = paidOff ? '✅ Fully Paid Off!'
+                  : overdue ? `⚠️ Overdue by ${Math.abs(l.days_to_due)} days`
+                  : `Due in ${l.days_to_due} days (${l.next_due})`;
+
+    return `
+      <div class="loan-card ${cardClass}">
+        <div class="flex-between">
+          <div>
+            <strong style="font-size:1.1rem;">🏦 ${l.loan_name}</strong>
+            <div class="text-muted" style="font-size:.82rem;margin-top:.2rem;">
+              ₹${l.principal.toLocaleString('en-IN')} @ ${l.rate}% p.a. for ${l.tenure} months
+            </div>
+          </div>
+          <div style="display:flex;gap:.5rem;flex-wrap:wrap;justify-content:flex-end;">
+            ${!paidOff ? `<button class="btn btn-success btn-sm" onclick="openPayModal(${l.id}, ${l.emi})">✅ Pay EMI</button>` : ''}
+            <button class="btn btn-outline btn-sm" onclick="openHistory(${l.id}, '${l.loan_name}')">📋 History</button>
+            <button class="btn btn-danger btn-sm" onclick="delLoan(${l.id})">🗑️</button>
+          </div>
+        </div>
+
+        <div class="loan-meta">
+          <div class="loan-meta-item">
+            <div class="label">Monthly EMI</div>
+            <div class="value" style="color:var(--primary)">${MM.fmt(l.emi)}</div>
+          </div>
+          <div class="loan-meta-item">
+            <div class="label">Months Paid</div>
+            <div class="value" style="color:var(--success)">${l.months_paid} / ${l.tenure}</div>
+          </div>
+          <div class="loan-meta-item">
+            <div class="label">Months Left</div>
+            <div class="value" style="color:${l.months_left===0?'var(--success)':'var(--warning)'}">${l.months_left}</div>
+          </div>
+          <div class="loan-meta-item">
+            <div class="label">Amount Paid</div>
+            <div class="value" style="color:var(--success)">${MM.fmt(l.amount_paid)}</div>
+          </div>
+          <div class="loan-meta-item">
+            <div class="label">Outstanding</div>
+            <div class="value" style="color:var(--danger)">${MM.fmt(l.amount_left)}</div>
+          </div>
+          <div class="loan-meta-item">
+            <div class="label">Total Interest</div>
+            <div class="value" style="color:var(--warning)">${MM.fmt(l.total_int)}</div>
+          </div>
+        </div>
+
+        <!-- Progress bar -->
+        <div style="margin-bottom:.4rem;" class="flex-between">
+          <span style="font-size:.8rem;color:var(--muted);">Repayment Progress</span>
+          <span style="font-size:.8rem;font-weight:700;">${l.progress_pct}%</span>
+        </div>
+        <div class="progress-bar" style="height:12px;">
+          <div class="progress-fill" style="width:${l.progress_pct}%;background:${paidOff?'#10b981':overdue?'#ef4444':'#4f46e5'}"></div>
+        </div>
+
+        <div class="mt-1 ${dueClass}" style="font-size:.82rem;">${dueText}</div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ── ADD LOAN ─────────────────────────────────────
+async function addLoan() {
+  const name = document.getElementById('mLoanName').value.trim() || 'My Loan';
+  const P    = document.getElementById('mP').value;
+  const R    = document.getElementById('mR').value;
+  const N    = document.getElementById('mN').value;
+  if (!P || !R || !N) return MM.toast('All fields required.', 'error');
+  await MM.post('/api/emi-calc', { loan_name: name, principal: P, rate: R, tenure: N });
+  MM.closeModal('calcModal');
+  MM.toast('Loan added!');
+  document.getElementById('mLoanName').value = '';
+  document.getElementById('mP').value = '';
+  document.getElementById('mR').value = '';
+  document.getElementById('mN').value = '';
+  load();
+}
+
+// ── DELETE LOAN ───────────────────────────────────
+async function delLoan(id) {
+  if (!confirm('Delete this loan and all payment history?')) return;
+  await MM.del('/api/loans/' + id);
+  MM.toast('Loan deleted.');
+  load();
+}
+
+// ── PAY EMI ───────────────────────────────────────
+function openPayModal(id, emi) {
+  document.getElementById('payLoanId').value = id;
+  document.getElementById('payAmt').value    = emi;
+  document.getElementById('payDate').valueAsDate = new Date();
+  document.getElementById('payNote').value   = '';
+  MM.openModal('payModal');
+}
+
+async function submitPayment() {
+  const id   = document.getElementById('payLoanId').value;
+  const amt  = parseFloat(document.getElementById('payAmt').value);
+  const date = document.getElementById('payDate').value;
+  if (!amt || !date) return MM.toast('Amount and date required.', 'error');
+  await MM.post('/api/loans/' + id + '/pay', {
+    amount: amt,
+    date,
+    note: document.getElementById('payNote').value
+  });
+  MM.closeModal('payModal');
+  MM.toast('EMI marked as paid! ✅');
+  load();
+}
+
+// ── PAYMENT HISTORY ───────────────────────────────
+async function openHistory(id, name) {
+  document.getElementById('histTitle').textContent = `📋 ${name} – Payment History`;
+  const payments = await MM.get('/api/loans/' + id + '/payments');
+  const el = document.getElementById('histList');
+  if (!payments.length) {
+    el.innerHTML = '<div class="empty">No payments recorded yet.</div>';
+  } else {
+    const total = payments.reduce((s, p) => s + p.amount, 0);
+    el.innerHTML = `
+      <div style="font-weight:700;font-size:.9rem;margin-bottom:.7rem;color:var(--success);">
+        Total Paid: ${MM.fmt(total)} (${payments.length} payment${payments.length!==1?'s':''})
+      </div>
+    ` + payments.map((p, i) => `
+      <div class="payment-row">
+        <div>
+          <strong>#${payments.length - i}</strong>
+          <span class="text-muted" style="margin-left:.5rem;">${p.paid_date}</span>
+          ${p.note ? `<span class="text-muted"> – ${p.note}</span>` : ''}
+        </div>
+        <span class="text-success" style="font-weight:700;">${MM.fmt(p.amount)}</span>
+      </div>
+    `).join('');
+  }
+  MM.openModal('histModal');
+}
+
+// ── LIVE CALCULATOR ───────────────────────────────
+function calcLive() {
+  const P = parseFloat(document.getElementById('calcP2').value);
+  const R = parseFloat(document.getElementById('calcR2').value);
+  const N = parseInt(document.getElementById('calcN2').value);
+  if (!P || !R || !N) { document.getElementById('liveResult').style.display='none'; return; }
+
+  const r = R / 12 / 100;
+  const emi = r === 0 ? P/N : P * r * Math.pow(1+r, N) / (Math.pow(1+r, N) - 1);
+  const totalPay = emi * N;
+  const totalInt = totalPay - P;
+
+  document.getElementById('liveEmi').textContent   = MM.fmt(emi);
+  document.getElementById('liveInt').textContent   = MM.fmt(totalInt);
+  document.getElementById('liveTotal').textContent = MM.fmt(totalPay);
+  document.getElementById('liveResult').style.display = 'block';
+
+  // Pie chart
+  if (pieChartInstance) pieChartInstance.destroy();
+  pieChartInstance = new Chart(document.getElementById('pieChart'), {
+    type: 'doughnut',
+    data: {
+      labels: ['Principal', 'Interest'],
+      datasets: [{ data: [P, totalInt], backgroundColor: ['#4f46e5', '#f59e0b'], borderWidth:2 }]
+    },
+    options: { responsive:true, plugins:{ legend:{ position:'bottom' } } }
+  });
+
+  // Schedule
+  let balance = P;
+  let rows = '';
+  for (let i=1; i<=Math.min(N,12); i++) {
+    const intPart = balance * r;
+    const prinPart = emi - intPart;
+    balance = Math.max(0, balance - prinPart);
+    rows += `<tr>
+      <td>${i}</td>
+      <td>${MM.fmt(emi)}</td>
+      <td class="text-success">${MM.fmt(prinPart)}</td>
+      <td class="text-danger">${MM.fmt(intPart)}</td>
+      <td>${MM.fmt(balance)}</td>
+    </tr>`;
+  }
+  document.getElementById('scheduleTable').innerHTML = rows;
+}
+
+async function saveFromCalc() {
+  const name = document.getElementById('calcName2').value.trim() || 'My Loan';
+  const P = document.getElementById('calcP2').value;
+  const R = document.getElementById('calcR2').value;
+  const N = document.getElementById('calcN2').value;
+  if (!P || !R || !N) return MM.toast('Fill all fields first.', 'error');
+  await MM.post('/api/emi-calc', { loan_name: name, principal: P, rate: R, tenure: N });
+  MM.toast('Loan saved! View in My Loans tab.');
+  switchTab('loans'); // Switch to loans tab
+  document.querySelectorAll('.tab-btn')[0].classList.add('active');
+  document.querySelectorAll('.tab-btn')[1].classList.remove('active');
+  load();
+}
+
+load();
+</script>
+</body>
+</html>

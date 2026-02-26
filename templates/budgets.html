@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Budgets – MoneyMap</title>
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sidebar-logo">💰 Money<span>Map</span></div>
+    <nav>
+      <a href="/dashboard"><span class="icon">🏠</span> Dashboard</a>
+      <a href="/analysis"><span class="icon">📊</span> Analysis</a>
+      <a href="/categories"><span class="icon">🗂️</span> Categories</a>
+      <a href="/budgets" class="active"><span class="icon">💰</span> Budgets</a>
+      <a href="/investments"><span class="icon">📈</span> Investments</a>
+      <a href="/trips"><span class="icon">✈️</span> Trips</a>
+      <a href="/accounts"><span class="icon">🧾</span> Accounts</a>
+      <a href="/bills"><span class="icon">🔔</span> Bills</a>
+      <a href="/subscriptions"><span class="icon">📺</span> Subscriptions</a>
+      <a href="/emi-tracker"><span class="icon">🧮</span> EMI Tracker</a>
+      <a href="/settings"><span class="icon">⚙️</span> Settings</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="user-chip">
+        <div class="user-avatar">{{ session.get('user_name','U')[0]|upper }}</div>
+        <div class="user-name">{{ session.get('user_name','User') }}</div>
+      </div>
+      <button class="logout-btn" onclick="location.href='/logout'">🚪 Logout</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <h1>💰 Monthly Budgets</h1>
+      <div style="display:flex;gap:.7rem;align-items:center;">
+        <input type="month" id="monthPicker" style="padding:.5rem;border:1px solid var(--border);border-radius:.4rem;">
+        <button class="btn btn-primary btn-sm" onclick="MM.openModal('budgetModal')">+ Add Budget</button>
+      </div>
+    </div>
+    <div class="card">
+      <div id="budgetList"><div class="empty">No budgets for this month.</div></div>
+    </div>
+  </main>
+</div>
+
+<div class="modal-overlay" id="budgetModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Set Budget</h3>
+      <button class="modal-close" onclick="MM.closeModal('budgetModal')">✕</button>
+    </div>
+    <div class="form-group">
+      <label>Category (Expense)</label>
+      <select id="budgetCat"></select>
+    </div>
+    <div class="form-group">
+      <label>Budget Amount (₹)</label>
+      <input type="number" id="budgetAmt" placeholder="5000" min="1">
+    </div>
+    <button class="btn btn-primary" onclick="saveBudget()">Save</button>
+  </div>
+</div>
+
+<script src="/static/js/main.js"></script>
+<script>
+const mp = document.getElementById('monthPicker');
+mp.value = new Date().toISOString().slice(0,7);
+mp.addEventListener('change', load);
+
+async function loadCats() {
+  const cats = await MM.get('/api/categories');
+  const exp = cats.filter(c => c.type === 'expense');
+  document.getElementById('budgetCat').innerHTML =
+    exp.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+}
+
+async function load() {
+  const budgets = await MM.get('/api/budgets');
+  const el = document.getElementById('budgetList');
+  if (!budgets.length) { el.innerHTML = '<div class="empty">No budgets set.</div>'; return; }
+
+  el.innerHTML = budgets.map(b => {
+    return `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:1rem;border-bottom:1px solid var(--border)">
+        <div>
+          <div style="font-weight:600;font-size:0.95rem">${b.category_name || 'Uncategorized'}</div>
+          <div style="font-size:.875rem;color:var(--muted)">Budget: ${MM.fmt(b.amount)}</div>
+          <div style="font-size:.8rem;color:var(--muted)">Month: ${b.month || 'N/A'}</div>
+        </div>
+        <button class="btn btn-danger btn-sm" onclick="delBudget(${b.id})">Delete</button>
+      </div>
+    `;
+  }).join('');
+}
+
+async function saveBudget() {
+  const cid = document.getElementById('budgetCat').value;
+  const amt = parseFloat(document.getElementById('budgetAmt').value);
+  if (!cid || !amt) return MM.toast('All fields required.', 'error');
+  await MM.post('/api/budgets', { category_id: cid, month: mp.value, amount: amt });
+  MM.closeModal('budgetModal');
+  MM.toast('Budget saved!');
+  load();
+}
+
+async function delBudget(id) {
+  if (!confirm('Delete budget?')) return;
+  await MM.del('/api/budgets/' + id);
+  MM.toast('Deleted.');
+  load();
+}
+
+loadCats();
+load();
+</script>
+</body>
+</html>
