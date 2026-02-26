@@ -3,3 +3,4 @@ Flask-Session==0.6.0
 mysql-connector-python==8.3.0
 bcrypt==4.1.2
 Werkzeug==3.0.1
+gunicorn
